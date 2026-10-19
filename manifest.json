@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "id": "alec.overview",
+  "name": "Window Overview",
+  "version": "1.0.0",
+  "author": "alec",
+  "license": "MIT",
+  "description": "Workspace-grouped window previews with keyboard hints; double-tap Super.",
+  "kinds": ["service"],
+  "keepLoaded": true,
+  "entryPoints": { "service": "Main.qml" }
+}
