@@ -139,7 +139,7 @@ Item {
     if (matches.length === 1 && matches[0].hint === next) select(matches[0])
   }
   IpcHandler {
-    target: "xvvhang.overview"
+    target: "konochi.konoview"
     function tap(): void { root.tap() }
     function toggle(): void { root.toggle() }
     function open(): void { root.open() }

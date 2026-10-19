@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "id": "xvvhang.overview",
-  "name": "Window Overview",
+  "id": "konochi.konoview",
+  "name": "Konoview",
   "version": "1.0.0",
   "author": "alec",
   "license": "MIT",
