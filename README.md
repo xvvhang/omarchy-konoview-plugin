@@ -48,13 +48,13 @@ keymap. No physical Alt keys or keyboard device names are bound by this plugin.
 IPC:
 
 ```sh
-omarchy-shell alec.overview toggle
-omarchy-shell alec.overview open
-omarchy-shell alec.overview close
-omarchy-shell alec.overview status
+omarchy-shell xvvhang.overview toggle
+omarchy-shell xvvhang.overview open
+omarchy-shell xvvhang.overview close
+omarchy-shell xvvhang.overview status
 ```
 
-Disable: `omarchy plugin disable alec.overview`, and remove the two overview
+Disable: `omarchy plugin disable xvvhang.overview`, and remove the two overview
 bindings from `~/.config/hypr/bindings.lua`. The pre-install bindings backup
 is named `bindings.lua.bak.overview.<timestamp>`.
 
@@ -66,7 +66,7 @@ There is no installer, network access, privileged command, or separate service.
 
 ```sh
 omarchy plugin add https://github.com/xvvhang/omarchy-overview --enable
-omarchy-shell alec.overview toggle
+omarchy-shell xvvhang.overview toggle
 ```
 
 The IPC command works without additional bindings. For the optional double-Super
@@ -74,8 +74,8 @@ shortcut, manually add these lines to `~/.config/hypr/bindings.lua` after checki
 for conflicting bindings and backing up the file:
 
 ```lua
-o.bind("SUPER + SUPER_L", "Window overview (double-tap Super)", "omarchy-shell alec.overview tap", { release = true, non_consuming = true })
-o.bind("SUPER + SUPER_R", "Window overview (double-tap Super)", "omarchy-shell alec.overview tap", { release = true, non_consuming = true })
+o.bind("SUPER + SUPER_L", "Window overview (double-tap Super)", "omarchy-shell xvvhang.overview tap", { release = true, non_consuming = true })
+o.bind("SUPER + SUPER_R", "Window overview (double-tap Super)", "omarchy-shell xvvhang.overview tap", { release = true, non_consuming = true })
 ```
 
 Validate changes with `hyprctl reload` and `hyprctl configerrors`. Local compositor
@@ -85,8 +85,8 @@ required for IPC use. Existing backups and bindings are specific to each machine
 To uninstall, remove only the bindings you added, then:
 
 ```sh
-omarchy plugin disable alec.overview
-omarchy plugin remove alec.overview
+omarchy plugin disable xvvhang.overview
+omarchy plugin remove xvvhang.overview
 ```
 
 No window images are retained. Back up unpushed changes before removal.
