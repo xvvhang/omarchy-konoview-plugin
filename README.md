@@ -67,7 +67,7 @@ Requires Omarchy Quattro, Hyprland with the `hl.dsp` Lua dispatch interface,
 There is no installer, network access, privileged command, or separate service.
 
 ```sh
-omarchy plugin add https://github.com/xvvhang/omarchy-overview --enable
+omarchy plugin add https://github.com/xvvhang/konoview --enable
 omarchy-shell konochi.konoview toggle
 ```
 
