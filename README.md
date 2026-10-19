@@ -4,6 +4,11 @@ Part of **Konochi**, a personal Omarchy plugin series by Alec Xu.
 
 An Omarchy shell service, implemented entirely in the user plugin directory.
 
+## Preview
+
+A public preview screenshot is not included yet. It will be added after a
+privacy-reviewed capture is available.
+
 ## Usage
 
 - Double-tap either Super key within 350 ms to toggle the fullscreen overview.
