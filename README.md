@@ -6,8 +6,7 @@ An Omarchy shell service, implemented entirely in the user plugin directory.
 
 ## Preview
 
-A public preview screenshot is not included yet. It will be added after a
-privacy-reviewed capture is available.
+![Konoview fullscreen window overview showing live previews of a terminal, the Omarchy website, and Aether, with search and keyboard selection hints](preview.png)
 
 ## Usage
 
