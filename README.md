@@ -15,18 +15,26 @@ An Omarchy shell service, implemented entirely in the user plugin directory.
   special workspaces and hidden group members), appear in one flat grid.
 - Press the letter on a window or click it to close the overview and focus it.
   The compositor switches workspace/monitor as needed; windows are not moved.
+- Press 1–9 to select the first visible window in that workspace, or 0 for
+  workspace 10. S selects the first visible scratchpad window. If no window
+  matches the current filter, switch directly to that workspace instead.
+- A selected window is highlighted with a thick accent border while the other
+  cards dim for 120 ms, then the overview closes and focuses it. This applies
+  to letter hints, workspace shortcuts, and clicks. Esc cancels the selection.
 - Enter focuses search; typing filters titles, application names, and workspace
   names live (case-insensitive, all whitespace-separated terms must match).
 - Esc or Enter in search returns to window-hint mode, keeping the current filter and
   original hint labels. Esc outside search closes without selecting.
   Backspace outside search clears the last hint character.
-- More than 26 windows use equally sized, unique multi-letter hints. Hints
+- Window hints exclude S (reserved for scratchpad). More than 25 windows use
+  equally sized, unique multi-letter hints. Hints
   are stable during one opening, sorted by workspace and window address.
 - Window cards use a responsive grid; scroll when the content exceeds
   the display. The overview opens on the focused monitor and covers its bar.
 - The previously focused window has an accent border. Below each preview,
   its title is on the left and its workspace name and keyboard hint on the right.
-- While search is focused, letter keys edit the query instead of selecting windows.
+- While search is focused, letters and digits edit the query instead of selecting
+  windows or workspaces.
 - The background uses the same theme-aware `Color.menu.scrim` as Super+K:
   a translucent solid-color dimmer, with no blur or desktop capture.
   The plugin animates its own scrim

@@ -23,10 +23,12 @@ Item {
       prefix = ""
       searchInput.text = ""
       windows = []
+      selectedAddress = ""
     }
   }
   property var windows: []
   property string focusedAddress: ""
+  property string selectedAddress: ""
   property string prefix: ""
   property string searchText: ""
   readonly property var filteredWindows: {
@@ -42,7 +44,7 @@ Item {
   property double lastTapInterval: 0
   property string cachedClients: ""
   property real windowRounding: 4
-  readonly property string alphabet: "asdfghjklqwertyuiopzxcvbnm"
+  readonly property string alphabet: "adfghjklqwertyuiopzxcvbnm"
   property var targetScreen: Quickshell.screens[0] || null
 
   function tap() {
@@ -58,6 +60,8 @@ Item {
   function toggle() { if (opened) close(); else open() }
   function open() {
     if (opened) return
+    focusLater.stop()
+    selectedAddress = ""
     prefix = ""
     searchInput.text = ""
     errorText = ""
@@ -78,6 +82,7 @@ Item {
     Qt.callLater(function() { keyboard.forceActiveFocus() })
   }
   function close() {
+    selectionLater.stop()
     opened = false
   }
   function hint(index, count) {
@@ -118,18 +123,40 @@ Item {
     return null
   }
   function select(w) {
-    if (!w) return
-    var address = w.address
+    if (!w || !opened || selectionLater.running) return
+    selectedAddress = w.address
+    selectionLater.command = "hl.dsp.focus({window=" + JSON.stringify("address:" + w.address) + "})"
+    selectionLater.restart()
+  }
+  function selectWorkspace(key) {
+    if (!opened || selectionLater.running) return
+    var workspace = key.toLowerCase() === "s" ? "special:scratchpad" : key === "0" ? "10" : key
+    for (var i = 0; i < filteredWindows.length; i++) {
+      var w = filteredWindows[i]
+      if (workspace === "special:scratchpad" ? w.workspace.name === workspace : String(w.workspace.id) === workspace) {
+        select(w)
+        return
+      }
+    }
+    dispatchAfterClose("hl.dsp.focus({workspace=" + JSON.stringify(workspace) + "})")
+  }
+  Timer {
+    id: selectionLater
+    property string command: ""
+    interval: 120
+    onTriggered: root.dispatchAfterClose(command)
+  }
+  function dispatchAfterClose(command) {
     close()
     // Defer until the exclusive layer has released keyboard focus.
-    focusLater.address = address
+    focusLater.command = command
     focusLater.restart()
   }
   Timer {
     id: focusLater
-    property string address: ""
+    property string command: ""
     interval: 30
-    onTriggered: Hyprland.dispatch("hl.dsp.focus({window=" + JSON.stringify("address:" + address) + "})")
+    onTriggered: Hyprland.dispatch(command)
   }
   function typeHint(text) {
     var next = prefix + text.toLowerCase()
@@ -209,12 +236,15 @@ Item {
       enabled: root.opened
       focus: true
       Keys.onPressed: function(event) {
+        if (selectionLater.running && event.key !== Qt.Key_Escape) { event.accepted = true; return }
         if (searchInput.activeFocus) return
         if (event.isAutoRepeat) { event.accepted = true; return }
         if (event.key === Qt.Key_Escape) root.close()
         else if (event.key === Qt.Key_Backspace) root.prefix = root.prefix.slice(0, -1)
         else if (event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier)) return
         else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { root.prefix = ""; searchInput.forceActiveFocus() }
+        else if (event.key >= Qt.Key_0 && event.key <= Qt.Key_9) root.selectWorkspace(String.fromCharCode(event.key))
+        else if (event.key === Qt.Key_S) root.selectWorkspace("s")
         else if (event.key >= Qt.Key_A && event.key <= Qt.Key_Z) root.typeHint(String.fromCharCode(event.key))
         event.accepted = true
       }
@@ -304,9 +334,11 @@ Item {
               id: tile
               required property var modelData
               readonly property bool wasFocused: modelData.address.replace(/^0x/, "") === root.focusedAddress.replace(/^0x/, "")
+              readonly property bool selected: modelData.address === root.selectedAddress
               width: Math.max(1, (modelData.size || [640, 400])[0] * windowRow.previewScale)
               spacing: 8
-              opacity: !root.prefix || modelData.hint.indexOf(root.prefix) === 0 ? 1 : 0.25
+              opacity: root.selectedAddress ? (selected ? 1 : 0.25) : !root.prefix || modelData.hint.indexOf(root.prefix) === 0 ? 1 : 0.25
+              Behavior on opacity { NumberAnimation { duration: 60 } }
               ClippingRectangle {
                 id: card
                 readonly property var handle: root.handleFor(tile.modelData.address)
@@ -315,8 +347,8 @@ Item {
                 radius: root.windowRounding
                 color: "transparent"
                 contentInsideBorder: false
-                border.width: tile.wasFocused || hover.containsMouse ? 2 : 1
-                border.color: tile.wasFocused ? Color.accent : Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, hover.containsMouse ? 0.65 : 0.3)
+                border.width: tile.selected ? 4 : tile.wasFocused || hover.containsMouse ? 2 : 1
+                border.color: tile.selected || tile.wasFocused ? Color.accent : Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, hover.containsMouse ? 0.65 : 0.3)
                 Item {
                   anchors.fill: parent
                   clip: true

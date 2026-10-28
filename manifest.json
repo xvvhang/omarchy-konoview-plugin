@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "konochi.konoview",
   "name": "Konoview",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "alec",
   "license": "MIT",
   "description": "Workspace-grouped window previews with keyboard hints; double-tap Super.",
