@@ -36,7 +36,7 @@ An Omarchy shell service, implemented entirely in the user plugin directory.
 - While search is focused, letters and digits edit the query instead of selecting
   windows or workspaces.
 - The background uses the same theme-aware `Color.menu.scrim` as Super+K:
-  a translucent solid-color dimmer, with no blur or desktop capture.
+  a translucent solid-color dimmer with compositor blur, without desktop capture.
   The plugin animates its own scrim
   and content opacity (100 ms in / 80 ms out), retaining previews until fade-out
   finishes. No Hyprland fade animation setting is required.
@@ -51,9 +51,12 @@ The window list is a snapshot on opening: reopen to include newly created window
 `~/.config/hypr/bindings.lua` registers non-consuming lone Super release bindings
 using the shell IPC command (the native global-shortcut release path is not used).
 The shell service detects the double tap and prefetches the window list on the
-first tap. Existing Super chords are not replaced. `~/.config/hypr/hyprland.lua`
-contains the existing `overview-glass` layer rule with compositor blur and
-animations disabled; the scrim and fade live in QML.
+first tap. Existing Super chords are not replaced. The plugin registers its own
+`konochi-konoview-blur` layer rule through `hyprctl eval`, matching only the
+`konochi-konoview` namespace. It restores the rule after Hyprland config reloads
+and disables it on plugin unload. A named rule is reused across hot reloads;
+owner-scoped cleanup cannot disable a newer instance's rule. No rule in
+`~/.config/hypr/hyprland.lua` is needed. The scrim and fade live in QML.
 The bindings are deliberately not enabled while the screen is locked.
 `input.resolve_binds_by_sym = true` makes symbol bindings follow each keyboard's
 actual XKB mapping, including Alt/Super swaps, instead of the shared translation
@@ -92,9 +95,9 @@ o.bind("SUPER + SUPER_L", "Konoview (double-tap Super)", "omarchy-shell konochi.
 o.bind("SUPER + SUPER_R", "Konoview (double-tap Super)", "omarchy-shell konochi.konoview tap", { release = true, non_consuming = true })
 ```
 
-Validate changes with `hyprctl reload` and `hyprctl configerrors`. Local compositor
-settings described in Integration are not installed automatically and are not
-required for IPC use. Existing backups and bindings are specific to each machine.
+Validate changes with `hyprctl reload` and `hyprctl configerrors`. The compositor
+blur rule is managed automatically; only the optional bindings require manual
+configuration. Existing backups and bindings are specific to each machine.
 
 To uninstall, remove only the bindings you added, then:
 

@@ -1,5 +1,16 @@
 # Validation record
 
+Checked 2026-10-29 for plugin-owned compositor blur:
+
+- Removed the external layer rule from `~/.config/hypr/hyprland.lua`.
+- Manifest validation and `git diff --check` passed. Qt 6 qmllint reported
+  existing delegate-scope/theme warnings, none in the new lifecycle code.
+- Restarted the shell to update the keepLoaded service; the runtime
+  `konochi-konoview-blur` rule reported enabled through `hyprctl repl`.
+- After `hyprctl reload`, the plugin restored the enabled rule and
+  `hyprctl configerrors` was empty.
+- Live disable/unload cleanup and visual blur still need manual verification.
+
 Checked 2026-10-28 for selection feedback (supersedes direct workspace selection):
 
 - Manifest validation passed and live shell IPC status responded after reload.

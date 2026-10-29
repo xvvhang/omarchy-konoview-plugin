@@ -175,13 +175,46 @@ Item {
     function status(): string { return JSON.stringify({opened: root.opened, windows: root.windows.length, matchingWindows: root.filteredWindows.length, searchFocused: searchInput.activeFocus, focusedAddress: root.focusedAddress, rounding: root.windowRounding, tapCount: root.tapCount, lastTapInterval: root.lastTapInterval}) }
   }
   Component.onCompleted: {
+    installLayerRule()
     listing.running = true
     roundingQuery.running = true
+  }
+  // An owner token prevents an old instance's deferred cleanup from disabling
+  // the replacement instance's rule during shell/plugin hot reloads.
+  readonly property string layerRuleOwner: Date.now().toString() + "-" + Math.random().toString(36).slice(2)
+  function installLayerRule() {
+    if (layerRuleInstall.running) layerRuleInstall.pending = true
+    else layerRuleInstall.running = true
+  }
+  Component.onDestruction: Quickshell.execDetached([
+    "hyprctl", "eval",
+    "if konochi_konoview_blur and konochi_konoview_blur.owner == " + JSON.stringify(layerRuleOwner) +
+    " then konochi_konoview_blur.rule:set_enabled(false); konochi_konoview_blur = nil end"
+  ])
+  Process {
+    id: layerRuleInstall
+    property bool pending: false
+    command: ["hyprctl", "eval",
+      "konochi_konoview_blur = { owner = " + JSON.stringify(root.layerRuleOwner) +
+      ", rule = hl.layer_rule({ name = \"konochi-konoview-blur\", match = { namespace = \"^konochi-konoview$\" }, blur = true }) }"]
+    stdout: StdioCollector {
+      onStreamFinished: if (text.trim() !== "ok") console.warn("konoview", "Layer rule registration:", text.trim())
+    }
+    onExited: function(code) {
+      if (code !== 0) console.warn("konoview", "Could not register layer rule, exit code", code)
+      if (pending) {
+        pending = false
+        running = true
+      }
+    }
   }
   Connections {
     target: Hyprland
     function onRawEvent(event) {
-      if (event.name === "configreloaded" && !roundingQuery.running) roundingQuery.running = true
+      if (event.name === "configreloaded") {
+        root.installLayerRule()
+        if (!roundingQuery.running) roundingQuery.running = true
+      }
     }
   }
   // Also pick up runtime keyword changes while the overview is visible.
@@ -215,10 +248,10 @@ Item {
     visible: root.opened || root.fadeProgress > 0
     screen: root.targetScreen
     anchors { top: true; bottom: true; left: true; right: true }
-    // Same theme-aware scrim as the Super+K menu; no background capture or blur.
+    // Same theme-aware scrim as Super+K, with compositor blur managed above.
     color: "transparent"
     exclusionMode: ExclusionMode.Ignore
-    WlrLayershell.namespace: "alec-overview"
+    WlrLayershell.namespace: "konochi-konoview"
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.keyboardFocus: root.opened ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
     onVisibleChanged: if (visible) Qt.callLater(function() { keyboard.forceActiveFocus() })
