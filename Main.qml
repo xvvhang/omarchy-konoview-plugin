@@ -339,7 +339,10 @@ Item {
           id: windowGrid
           width: windowScroll.availableWidth
           spacing: 24
-          readonly property var rows: Layout.rows(root.filteredWindows)
+          readonly property var arrangement: Layout.arrange(root.filteredWindows, width, windowScroll.height)
+          readonly property var rows: arrangement.rows
+          readonly property real previewScale: arrangement.scale
+          readonly property real previewLeft: arrangement.left
           Repeater {
             model: windowGrid.rows
             delegate: Item {
@@ -347,20 +350,9 @@ Item {
               required property var modelData
               width: windowGrid.width
               height: rowContent.implicitHeight
-              readonly property real previewScale: {
-                var totalWidth = 0, maxHeight = 1
-                for (var i = 0; i < modelData.length; i++) {
-                  var size = modelData[i].size || [640, 400]
-                  totalWidth += Math.max(1, size[0])
-                  maxHeight = Math.max(maxHeight, size[1])
-                }
-                var widthScale = Math.max(1, width - 24 * (modelData.length - 1)) / Math.max(1, totalWidth)
-                var rowBudget = Math.max(160, (windowScroll.height - 24 * (windowGrid.rows.length - 1)) / Math.max(1, windowGrid.rows.length) - 30)
-                return Math.min(widthScale, rowBudget / maxHeight)
-              }
               Row {
                 id: rowContent
-                anchors.horizontalCenter: parent.horizontalCenter
+                x: windowGrid.previewLeft
                 spacing: 24
                 Repeater {
                   model: windowRow.modelData
@@ -369,7 +361,7 @@ Item {
               required property var modelData
               readonly property bool wasFocused: modelData.address.replace(/^0x/, "") === root.focusedAddress.replace(/^0x/, "")
               readonly property bool selected: modelData.address === root.selectedAddress
-              width: Math.max(1, (modelData.size || [640, 400])[0] * windowRow.previewScale)
+              width: Math.max(1, (modelData.size || [640, 400])[0] * windowGrid.previewScale)
               spacing: 8
               opacity: root.selectedAddress ? (selected ? 1 : 0.25) : !root.prefix || modelData.hint.indexOf(root.prefix) === 0 ? 1 : 0.25
               Behavior on opacity { NumberAnimation { duration: 60 } }
@@ -377,7 +369,7 @@ Item {
                 id: card
                 readonly property var handle: root.handleFor(tile.modelData.address)
                 width: parent.width
-                height: Math.max(1, (tile.modelData.size || [640, 400])[1] * windowRow.previewScale)
+                height: Math.max(1, (tile.modelData.size || [640, 400])[1] * windowGrid.previewScale)
                 radius: root.windowRounding
                 color: "transparent"
                 contentInsideBorder: false
