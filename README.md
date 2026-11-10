@@ -71,7 +71,7 @@ omarchy-shell konochi.konoview close
 omarchy-shell konochi.konoview status
 ```
 
-Disable: `omarchy plugin disable konochi.konoview`, and remove the two overview
+Disable: `omarchy plugin disable konochi.konoview`, and remove the overview
 bindings from `~/.config/hypr/bindings.lua`. The pre-install bindings backup
 is named `bindings.lua.bak.overview.<timestamp>`.
 
@@ -91,9 +91,17 @@ shortcut, manually add these lines to `~/.config/hypr/bindings.lua` after checki
 for conflicting bindings and backing up the file:
 
 ```lua
+o.bind("Super_L", "Konoview (Super press)", "omarchy-shell konochi.konoview press", { non_consuming = true })
+o.bind("Super_R", "Konoview (Super press)", "omarchy-shell konochi.konoview press", { non_consuming = true })
 o.bind("SUPER + SUPER_L", "Konoview (double-tap Super)", "omarchy-shell konochi.konoview tap", { release = true, non_consuming = true })
 o.bind("SUPER + SUPER_R", "Konoview (double-tap Super)", "omarchy-shell konochi.konoview tap", { release = true, non_consuming = true })
 ```
+
+The first lone Super release arms the gesture; the next Super press within
+350 ms toggles the overview immediately. Its release is ignored. A Super chord
+does not arm the gesture, but a chord started within the armed interval will
+already have toggled the overview on Super press. Existing release-only bindings
+still work, but wait until the second release.
 
 Validate changes with `hyprctl reload` and `hyprctl configerrors`. The compositor
 blur rule is managed automatically; only the optional bindings require manual
@@ -106,7 +114,13 @@ omarchy plugin disable konochi.konoview
 omarchy plugin remove konochi.konoview
 ```
 
-No window images are retained. Back up unpushed changes before removal.
+Window thumbnails are retained only in memory (up to 64 images, longest edge
+640px) to show the previous view while live capture starts. They are never saved
+to disk and are cleared when the service is destroyed. Missing windows are pruned
+on list refresh. Back up unpushed changes before removal.
+
+Restart the shell with `omarchy restart shell` after updating this keep-loaded
+service. IPC uses Omarchy's `ShellIpc` fast path; the shell must provide it.
 
 ## Validation
 

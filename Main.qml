@@ -42,13 +42,46 @@ Item {
   property string errorText: ""
   property double lastTap: 0
   property int tapCount: 0
+  property int pressCount: 0
   property double lastTapInterval: 0
+  property bool suppressNextTap: false
   property string cachedClients: ""
+  property double openStartedAt: 0
+  property int openSyncMs: 0
+  property int populateMs: 0
+  property int firstPreviewMs: -1
+  property int cachedPreviewMs: -1
+  property int layerVisibleMs: -1
+  property int previewCreations: 0
+  property int firstCaptureSourceMs: -1
+  property int firstCaptureWaitMs: -1
+  property bool remainingCapturesEnabled: false
+  readonly property string priorityAddress: {
+    for (var i = 0; i < filteredWindows.length; i++)
+      if (filteredWindows[i].address === focusedAddress) return focusedAddress
+    return filteredWindows.length ? filteredWindows[0].address : ""
+  }
+  property var cachedPreviews: ({})
+  property int snapshotGeneration: 0
+  signal snapshotRequested()
   property real windowRounding: 4
   readonly property string alphabet: "adfghjklqwertyuiopzxcvbnm"
   property var targetScreen: Quickshell.screens[0] || null
 
+  function press() {
+    pressCount++
+    // A new press also recovers if the previous release was not delivered.
+    suppressNextTap = false
+    var now = Date.now()
+    if (lastTap && now - lastTap < 350) {
+      lastTapInterval = now - lastTap
+      lastTap = 0
+      suppressNextTap = true
+      toggle()
+    }
+  }
   function tap() {
+    if (suppressNextTap) { suppressNextTap = false; return }
     var now = Date.now()
     tapCount++
     lastTapInterval = lastTap ? now - lastTap : 0
@@ -61,6 +94,15 @@ Item {
   function toggle() { if (opened) close(); else open() }
   function open() {
     if (opened) return
+    openStartedAt = Date.now()
+    firstPreviewMs = -1
+    cachedPreviewMs = -1
+    layerVisibleMs = -1
+    previewCreations = 0
+    firstCaptureSourceMs = -1
+    firstCaptureWaitMs = -1
+    snapshotGeneration++
+    remainingCapturesEnabled = false
     focusLater.stop()
     selectedAddress = ""
     prefix = ""
@@ -80,11 +122,40 @@ Item {
     opened = true
     if (cachedClients) populate(cachedClients)
     if (!listing.running) listing.running = true
+    remainingCaptureFallback.restart()
     Qt.callLater(function() { keyboard.forceActiveFocus() })
+    openSyncMs = Date.now() - openStartedAt
   }
   function close() {
     selectionLater.stop()
+    remainingCaptureFallback.stop()
+    startRemainingCaptures.stop()
+    if (opened) snapshotRequested()
     opened = false
+  }
+  Timer {
+    id: remainingCaptureFallback
+    interval: 250
+    onTriggered: if (root.opened) root.remainingCapturesEnabled = true
+  }
+  Timer {
+    id: startRemainingCaptures
+    interval: 16
+    onTriggered: {
+      remainingCaptureFallback.stop()
+      if (root.opened) root.remainingCapturesEnabled = true
+    }
+  }
+  function cacheKey(w) { return w.address + ":" + w.pid }
+  function storeSnapshot(key, result, generation) {
+    if (generation !== snapshotGeneration || !result || !result.url) return
+    var next = Object.assign({}, cachedPreviews)
+    delete next[key]
+    // Bound retained thumbnail memory, even with unusually many windows.
+    var keys = Object.keys(next)
+    if (keys.length >= 64) delete next[keys[0]]
+    next[key] = result
+    cachedPreviews = next
   }
   function hint(index, count) {
     var length = Math.max(1, Math.ceil(Math.log(Math.max(2, count)) / Math.log(alphabet.length)))
@@ -98,6 +169,7 @@ Item {
   function populate(text) {
     cachedClients = text
     if (!opened) return
+    var startedAt = Date.now()
     try {
       var clients = JSON.parse(text).filter(function(w) { return w.mapped })
       // An exclusive layer clears toplevel activation; Hyprland retains the
@@ -113,7 +185,23 @@ Item {
         var w = clients[i]
         w.hint = hint(i, clients.length)
       }
-      windows = clients
+      // A fresh query often repeats the cached list used by open(). Replacing
+      // an unchanged array rebuilds every preview and restarts screencopy.
+      var unchanged = clients.length === windows.length
+      for (var c = 0; unchanged && c < clients.length; c++) {
+        var a = clients[c], b = windows[c]
+        unchanged = a.address === b.address && a.title === b.title && a.class === b.class
+          && a.hint === b.hint && a.workspace.id === b.workspace.id && a.workspace.name === b.workspace.name
+          && JSON.stringify(a.size) === JSON.stringify(b.size)
+      }
+      if (!unchanged) windows = clients
+      var retained = {}
+      for (var p = 0; p < clients.length; p++) {
+        var key = cacheKey(clients[p])
+        if (cachedPreviews[key]) retained[key] = cachedPreviews[key]
+      }
+      cachedPreviews = retained
+      populateMs = Date.now() - startedAt
     } catch (e) { errorText = "Could not read Hyprland windows" }
   }
   function handleFor(address) {
@@ -166,14 +254,16 @@ Item {
     prefix = next
     if (matches.length === 1 && matches[0].hint === next) select(matches[0])
   }
-  IpcHandler {
+  ShellIpc {
     target: "konochi.konoview"
+    function captureTiming(): string { return JSON.stringify({previewCreations: root.previewCreations, firstCaptureSourceMs: root.firstCaptureSourceMs, firstCaptureWaitMs: root.firstCaptureWaitMs, firstPreviewMs: root.firstPreviewMs}) }
+    function press(): void { root.press() }
     function tap(): void { root.tap() }
     function toggle(): void { root.toggle() }
     function open(): void { root.open() }
     function close(): void { root.close() }
     function choose(hint: string): void { if (root.opened) root.typeHint(hint) }
-    function status(): string { return JSON.stringify({opened: root.opened, windows: root.windows.length, matchingWindows: root.filteredWindows.length, searchFocused: searchInput.activeFocus, focusedAddress: root.focusedAddress, rounding: root.windowRounding, tapCount: root.tapCount, lastTapInterval: root.lastTapInterval}) }
+    function status(): string { return JSON.stringify({opened: root.opened, windows: root.windows.length, matchingWindows: root.filteredWindows.length, searchFocused: searchInput.activeFocus, focusedAddress: root.focusedAddress, rounding: root.windowRounding, pressCount: root.pressCount, tapCount: root.tapCount, lastTapInterval: root.lastTapInterval, startup: {openSyncMs: root.openSyncMs, populateMs: root.populateMs, firstPreviewMs: root.firstPreviewMs, cachedPreviewMs: root.cachedPreviewMs, layerVisibleMs: root.layerVisibleMs, cachedPreviews: Object.keys(root.cachedPreviews).length}}) }
   }
   Component.onCompleted: {
     installLayerRule()
@@ -247,6 +337,10 @@ Item {
   PanelWindow {
     id: overlay
     visible: root.opened || root.fadeProgress > 0
+    onBackingWindowVisibleChanged: {
+      if (backingWindowVisible && root.opened)
+        root.layerVisibleMs = Date.now() - root.openStartedAt
+    }
     screen: root.targetScreen
     anchors { top: true; bottom: true; left: true; right: true }
     // Same theme-aware scrim as Super+K, with compositor blur managed above.
@@ -337,10 +431,17 @@ Item {
         contentWidth: availableWidth
         Column {
           id: windowGrid
-          width: windowScroll.availableWidth
+          // A newly mapped PanelWindow initially reports 0x0. Use the selected
+          // screen's geometry until configure arrives, avoiding a bogus one-column
+          // layout that would immediately destroy and recreate every capture.
+          width: windowScroll.availableWidth > 0 ? windowScroll.availableWidth : Math.max(1, (root.targetScreen ? root.targetScreen.width : 1440) - 72)
           spacing: 24
-          readonly property var arrangement: Layout.arrange(root.filteredWindows, width, windowScroll.height)
-          readonly property var rows: arrangement.rows
+          readonly property real layoutHeight: windowScroll.height > 0 ? windowScroll.height : Math.max(1, (root.targetScreen ? root.targetScreen.height : 900) - 140)
+          readonly property var arrangement: Layout.arrange(root.filteredWindows, width, layoutHeight)
+          // Geometry changes should resize existing captures, not replace their
+          // array models. Rebuild rows only when membership/capacity changes.
+          readonly property int columns: arrangement.columns
+          readonly property var rows: columns > 0 ? Layout.rows(root.filteredWindows, columns) : []
           readonly property real previewScale: arrangement.scale
           readonly property real previewLeft: arrangement.left
           Repeater {
@@ -378,15 +479,61 @@ Item {
                 Item {
                   anchors.fill: parent
                   clip: true
+                  Image {
+                    id: cachedImage
+                    anchors.fill: parent
+                    readonly property var snapshot: root.cachedPreviews[root.cacheKey(tile.modelData)]
+                    source: snapshot ? snapshot.url : ""
+                    fillMode: Image.PreserveAspectFit
+                    visible: !preview.hasContent
+                    cache: false
+                    onStatusChanged: {
+                      if (status === Image.Ready && !preview.hasContent && root.opened && root.cachedPreviewMs < 0)
+                        root.cachedPreviewMs = Date.now() - root.openStartedAt
+                    }
+                  }
                   ScreencopyView {
                     id: preview
+                    property double sourceAssignedAt: 0
+                    Component.onCompleted: root.previewCreations++
+                    onCaptureSourceChanged: {
+                      if (captureSource && root.opened) {
+                        sourceAssignedAt = Date.now()
+                        if (root.firstCaptureSourceMs < 0) root.firstCaptureSourceMs = sourceAssignedAt - root.openStartedAt
+                      }
+                    }
                     anchors.fill: parent
-                    captureSource: card.handle
+                    // Start the focused preview first, instead of allocating all
+                    // full-resolution capture buffers in the entrance frame.
+                    captureSource: root.remainingCapturesEnabled || tile.modelData.address === root.priorityAddress ? card.handle : null
                     live: root.opened
+                    function saveSnapshot() {
+                      if (!hasContent || width <= 0 || height <= 0) return
+                      var key = root.cacheKey(tile.modelData)
+                      var generation = root.snapshotGeneration
+                      var scale = Math.min(1, 640 / width, 640 / height)
+                      grabToImage(function(result) {
+                        root.storeSnapshot(key, result, generation)
+                      }, Qt.size(Math.max(1, Math.round(width * scale)), Math.max(1, Math.round(height * scale))))
+                    }
+                    Connections {
+                      target: root
+                      function onSnapshotRequested() { preview.saveSnapshot() }
+                    }
+                    onHasContentChanged: {
+                      if (hasContent && root.opened && !root.remainingCapturesEnabled && !startRemainingCaptures.running)
+                        startRemainingCaptures.start()
+                      if (hasContent && root.opened && root.firstPreviewMs < 0) {
+                        root.firstPreviewMs = Date.now() - root.openStartedAt
+                        root.firstCaptureWaitMs = Date.now() - sourceAssignedAt
+                      }
+                      // Also seed the cache before closing, including with animations off.
+                      if (hasContent && root.opened) saveSnapshot()
+                    }
                   }
                   Text {
                     anchors.centerIn: parent
-                    visible: !preview.hasContent
+                    visible: !preview.hasContent && cachedImage.status !== Image.Ready
                     text: (tile.modelData.class || "Window") + "\nPreview unavailable"
                     horizontalAlignment: Text.AlignHCenter
                     color: Color.foreground; opacity: 0.5; font.family: Style.font.family
