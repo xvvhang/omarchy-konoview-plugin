@@ -16,7 +16,8 @@ Item {
   property bool opened: false
   property real fadeProgress: opened ? 1 : 0
   Behavior on fadeProgress {
-    NumberAnimation { duration: root.opened ? 100 : 80; easing.type: Easing.OutCubic }
+    // Match Omarchy Menu's instant entrance; keep the short exit fade.
+    NumberAnimation { duration: Style.duration(root.opened ? 0 : 80); easing.type: Easing.OutCubic }
   }
   onFadeProgressChanged: {
     if (!opened && fadeProgress === 0) {
@@ -196,7 +197,7 @@ Item {
     property bool pending: false
     command: ["hyprctl", "eval",
       "konochi_konoview_blur = { owner = " + JSON.stringify(root.layerRuleOwner) +
-      ", rule = hl.layer_rule({ name = \"konochi-konoview-blur\", match = { namespace = \"^konochi-konoview$\" }, blur = true }) }"]
+      ", rule = hl.layer_rule({ name = \"konochi-konoview-blur\", match = { namespace = \"^konochi-konoview$\" }, blur = true, no_anim = true, animation = \"none\" }) }"]
     stdout: StdioCollector {
       onStreamFinished: if (text.trim() !== "ok") console.warn("konoview", "Layer rule registration:", text.trim())
     }
