@@ -1,5 +1,35 @@
 # Validation record
 
+Checked 2026-11-11 for the findings on marketplace issue #14592:
+
+- Replaced native clipboard transfer with SafeSearch interception before Qt
+  handling (Ctrl+V/Shift+Insert/Paste key, custom right-click menu and middle
+  primary paste). Worker reads at most 4096 bytes with a 1-second absolute
+  deadline; completion requires unchanged panel/focus/edit/caret/selection/IME
+  revision. Closing/reopening and focus loss cancel/invalidate the operation.
+- Extracted the dynamic unavailable-preview caption into FallbackCaption with
+  PlainText and a 256-character sanitized class limit. An actual local HTTP
+  observer saw zero image requests from the production caption while the
+  RichText positive control requested its image.
+- All finite Hyprland queries now use worker.py and BoundedProcess: bounded
+  reply, deadline, producer kill/reap, helper watchdog, cancellation and reset.
+  Fixed a JavaScript `arguments` shadowing bug by using `root.arguments`.
+- Native Quickshell fixture tests exercise correct argument delivery, helper
+  timeout, cancellation, failure, failed-start and retry. Producer fixtures
+  exercise slow/continuous/oversized/stalled output, EOF-without-exit, missing
+  command/nonzero exit, process reaping and retry. They do not replace the
+  user's clipboard or constitute live malicious Wayland-owner testing.
+- Only normalized metadata reaches the GUI: 1 MiB raw producer cap, 128 recent
+  windows, bounded fields and valid sizes/addresses. Captures have a 12-source
+  count budget plus estimated per-source/aggregate pixel admission limits.
+  Cache, selection, close/reload owner checks remain intact.
+- Eight Python tests (including native Quickshell fixtures and HTTP observer),
+  nine offscreen QtTest results, four Node suites, manifest validation and
+  diff checks passed. Qt lint has the existing theme/delegate-resolution
+  warnings; no errors in the new components.
+- Live overview opened with seven windows and correct rounding after helper
+  fix. Final marketplace validation and maintainer review remain outstanding.
+
 Checked 2026-11-10 for zero-size mapping/recreated captures:
 
 - Added `captureTiming` IPC to count preview construction and time source

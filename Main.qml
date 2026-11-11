@@ -46,6 +46,27 @@ Item {
   property double lastTapInterval: 0
   property bool suppressNextTap: false
   property string cachedClients: ""
+  property int totalWindows: 0
+  // Metadata and scene-graph budgets are independent of the client population.
+  readonly property int maxWindows: 128
+  readonly property int maxCaptures: 12
+  readonly property var captureAddresses: {
+    var scale = 2
+    var monitors = Hyprland.monitors.values
+    for (var m = 0; m < monitors.length; m++)
+      if (targetScreen && monitors[m].name === targetScreen.name && isFinite(monitors[m].scale)) scale = Math.max(1, monitors[m].scale)
+    var candidates = filteredWindows.slice()
+    candidates.sort(function(a, b) { return Number(b.address === priorityAddress) - Number(a.address === priorityAddress) })
+    var result = [], pixels = 0
+    for (var i = 0; i < candidates.length && result.length < maxCaptures; i++) {
+      var w = candidates[i]
+      var cost = w.size[0] * w.size[1] * scale * scale
+      if (cost > 16 * 1024 * 1024 || pixels + cost > 48 * 1024 * 1024) continue
+      result.push(w.address)
+      pixels += cost
+    }
+    return result
+  }
   property double openStartedAt: 0
   property int openSyncMs: 0
   property int populateMs: 0
@@ -88,7 +109,7 @@ Item {
     if (now - lastTap < 350) { lastTap = 0; toggle() }
     else {
       lastTap = now
-      if (!listing.running) listing.running = true
+      listing.start()
     }
   }
   function toggle() { if (opened) close(); else open() }
@@ -118,16 +139,18 @@ Item {
       if (monitor && Quickshell.screens[i].name === monitor.name)
         targetScreen = Quickshell.screens[i]
     Hyprland.refreshToplevels()
-    if (!roundingQuery.running) roundingQuery.running = true
+    roundingQuery.start()
     opened = true
     if (cachedClients) populate(cachedClients)
-    if (!listing.running) listing.running = true
+    listing.start()
     remainingCaptureFallback.restart()
     Qt.callLater(function() { keyboard.forceActiveFocus() })
     openSyncMs = Date.now() - openStartedAt
   }
   function close() {
     selectionLater.stop()
+    listing.cancel()
+    roundingQuery.cancel()
     remainingCaptureFallback.stop()
     startRemainingCaptures.stop()
     if (opened) snapshotRequested()
@@ -167,11 +190,15 @@ Item {
     return text
   }
   function populate(text) {
+    if (text.length > 2 * 1024 * 1024) { errorText = "Window reply too large"; return }
     cachedClients = text
     if (!opened) return
     var startedAt = Date.now()
     try {
-      var clients = JSON.parse(text).filter(function(w) { return w.mapped })
+      var reply = JSON.parse(text)
+      if (!Array.isArray(reply.clients) || reply.clients.length > maxWindows) throw new Error("Window budget exceeded")
+      var clients = reply.clients
+      totalWindows = reply.total
       // An exclusive layer clears toplevel activation; Hyprland retains the
       // most recently focused client in its focus history while it is open.
       for (var f = 0; f < clients.length; f++)
@@ -192,7 +219,7 @@ Item {
         var a = clients[c], b = windows[c]
         unchanged = a.address === b.address && a.title === b.title && a.class === b.class
           && a.hint === b.hint && a.workspace.id === b.workspace.id && a.workspace.name === b.workspace.name
-          && JSON.stringify(a.size) === JSON.stringify(b.size)
+          && a.pid === b.pid && JSON.stringify(a.size) === JSON.stringify(b.size)
       }
       if (!unchanged) windows = clients
       var retained = {}
@@ -267,44 +294,43 @@ Item {
   }
   Component.onCompleted: {
     installLayerRule()
-    listing.running = true
-    roundingQuery.running = true
+    listing.start()
+    roundingQuery.start()
   }
   // An owner token prevents an old instance's deferred cleanup from disabling
   // the replacement instance's rule during shell/plugin hot reloads.
   readonly property string layerRuleOwner: Date.now().toString() + "-" + Math.random().toString(36).slice(2)
   function installLayerRule() {
     if (layerRuleInstall.running) layerRuleInstall.pending = true
-    else layerRuleInstall.running = true
+    else layerRuleInstall.start()
   }
   Component.onDestruction: Quickshell.execDetached([
-    "hyprctl", "eval",
+    "/usr/bin/python3", "-B", decodeURIComponent(Qt.resolvedUrl("worker.py").toString().replace(/^(file|qs):\/\//, "")), "rule",
     "if konochi_konoview_blur and konochi_konoview_blur.owner == " + JSON.stringify(layerRuleOwner) +
     " then konochi_konoview_blur.rule:set_enabled(false); konochi_konoview_blur = nil end"
   ])
-  Process {
+  BoundedProcess {
     id: layerRuleInstall
     property bool pending: false
-    command: ["hyprctl", "eval",
+    operation: "rule"
+    arguments: [
       "konochi_konoview_blur = { owner = " + JSON.stringify(root.layerRuleOwner) +
       ", rule = hl.layer_rule({ name = \"konochi-konoview-blur\", match = { namespace = \"^konochi-konoview$\" }, blur = true, no_anim = true, animation = \"none\" }) }"]
-    stdout: StdioCollector {
-      onStreamFinished: if (text.trim() !== "ok") console.warn("konoview", "Layer rule registration:", text.trim())
-    }
-    onExited: function(code) {
-      if (code !== 0) console.warn("konoview", "Could not register layer rule, exit code", code)
+    function finishInstall() {
       if (pending) {
         pending = false
-        running = true
+        Qt.callLater(function() { layerRuleInstall.start() })
       }
     }
+    onSucceeded: finishInstall()
+    onFailed: function(message) { console.warn("konoview", "Could not register layer rule:", message); finishInstall() }
   }
   Connections {
     target: Hyprland
     function onRawEvent(event) {
       if (event.name === "configreloaded") {
         root.installLayerRule()
-        if (!roundingQuery.running) roundingQuery.running = true
+        roundingQuery.start()
       }
     }
   }
@@ -313,25 +339,19 @@ Item {
     interval: 1000
     repeat: true
     running: root.opened
-    onTriggered: if (!roundingQuery.running) roundingQuery.running = true
+    onTriggered: roundingQuery.start()
   }
-  Process {
+  BoundedProcess {
     id: roundingQuery
-    command: ["hyprctl", "getoption", "decoration:rounding", "-j"]
-    stdout: StdioCollector {
-      onStreamFinished: {
-        try {
-          var value = JSON.parse(text).int
-          if (typeof value === "number") root.windowRounding = Math.max(0, value)
-        } catch (e) { console.warn("overview", "Could not read window rounding") }
-      }
-    }
+    operation: "rounding"
+    onSucceeded: function(value) { root.windowRounding = value.rounding }
+    onFailed: function(message) { console.warn("konoview", "Could not read window rounding:", message) }
   }
-  Process {
+  BoundedProcess {
     id: listing
-    command: ["hyprctl", "clients", "-j"]
-    stdout: StdioCollector { onStreamFinished: root.populate(text) }
-    onExited: function(code) { if (code !== 0) root.errorText = "hyprctl clients failed" }
+    operation: "clients"
+    onSucceeded: function(value) { root.errorText = ""; root.populate(JSON.stringify(value)) }
+    onFailed: function(message) { root.errorText = "Could not read windows; reopen to retry" }
   }
 
   PanelWindow {
@@ -385,8 +405,9 @@ Item {
         color: Qt.rgba(Color.background.r, Color.background.g, Color.background.b, 0.8)
         border.width: 1
         border.color: searchInput.activeFocus ? Color.accent : Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.22)
-        TextInput {
+        SafeSearch {
           id: searchInput
+          panelActive: root.opened
           anchors { fill: parent; leftMargin: 12; rightMargin: 12 }
           verticalAlignment: TextInput.AlignVCenter
           color: Color.foreground
@@ -416,12 +437,20 @@ Item {
         }
         Text {
           anchors.centerIn: parent
+          textFormat: Text.PlainText
           visible: searchInput.text.length === 0 && searchInput.preeditText.length === 0
           text: searchInput.activeFocus ? "Search windows…" : "Press Enter to search"
           color: Color.foreground
           opacity: 0.5
           font.family: Style.font.family
           font.pixelSize: 13
+        }
+        Text {
+          anchors { top: parent.bottom; topMargin: 4; horizontalCenter: parent.horizontalCenter }
+          textFormat: Text.PlainText
+          text: searchInput.pasteError || root.errorText || (root.totalWindows > root.maxWindows ? "Showing the 128 most recent windows" : "")
+          color: Color.foreground
+          font.pixelSize: 11
         }
       }
       ScrollView {
@@ -505,7 +534,8 @@ Item {
                     anchors.fill: parent
                     // Start the focused preview first, instead of allocating all
                     // full-resolution capture buffers in the entrance frame.
-                    captureSource: root.remainingCapturesEnabled || tile.modelData.address === root.priorityAddress ? card.handle : null
+                    captureSource: root.captureAddresses.indexOf(tile.modelData.address) !== -1
+                      && (root.remainingCapturesEnabled || tile.modelData.address === root.captureAddresses[0]) ? card.handle : null
                     live: root.opened
                     function saveSnapshot() {
                       if (!hasContent || width <= 0 || height <= 0) return
@@ -531,10 +561,10 @@ Item {
                       if (hasContent && root.opened) saveSnapshot()
                     }
                   }
-                  Text {
+                  FallbackCaption {
                     anchors.centerIn: parent
                     visible: !preview.hasContent && cachedImage.status !== Image.Ready
-                    text: (tile.modelData.class || "Window") + "\nPreview unavailable"
+                    appClass: tile.modelData.class || "Window"
                     horizontalAlignment: Text.AlignHCenter
                     color: Color.foreground; opacity: 0.5; font.family: Style.font.family
                   }
@@ -580,6 +610,7 @@ Item {
               }
             }
           Text {
+            textFormat: Text.PlainText
             visible: root.filteredWindows.length === 0
             text: root.errorText || (listing.running ? "Loading windows…" : root.searchText.trim() ? "No matching windows" : "No windows")
             color: Color.foreground; font.family: Style.font.family

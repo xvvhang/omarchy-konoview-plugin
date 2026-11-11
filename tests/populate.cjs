@@ -8,13 +8,13 @@ const start = source.indexOf('  function populate(text) {')
 const end = source.indexOf('  function handleFor(', start)
 assert.ok(start >= 0 && end > start)
 const context = vm.createContext({
-  opened: true, windows: [], cachedClients: '', focusedAddress: '',
+  opened: true, windows: [], cachedClients: '', focusedAddress: '', maxWindows: 128, totalWindows: 0,
   hint: index => String(index), errorText: '', populateMs: 0,
   cachedPreviews: {}, cacheKey: w => w.address + ':' + w.pid,
 })
 vm.runInContext(source.slice(start, end), context)
 const client = { address: '0x1', mapped: true, title: 'One', class: 'Terminal', workspace: { id: 1, name: '1' }, size: [1000, 600], focusHistoryID: 0 }
-const populate = clients => context.populate(JSON.stringify(clients))
+const populate = clients => context.populate(JSON.stringify({ clients, total: clients.length }))
 populate([client])
 const original = context.windows
 context.cachedPreviews[context.cacheKey(client)] = { url: 'image://test/one' }

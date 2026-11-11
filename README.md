@@ -78,7 +78,8 @@ is named `bindings.lua.bak.overview.<timestamp>`.
 ## Install and remove
 
 Requires Omarchy Quattro, Hyprland with the `hl.dsp` Lua dispatch interface,
-`hyprctl`, and Quickshell's Hyprland toplevel-export/screencopy support.
+`hyprctl`, Python 3, `wl-paste` (wl-clipboard, for explicit paste), and
+Quickshell's Hyprland toplevel-export/screencopy support.
 There is no installer, network access, privileged command, or separate service.
 
 ```sh
@@ -122,11 +123,41 @@ on list refresh. Back up unpushed changes before removal.
 Restart the shell with `omarchy restart shell` after updating this keep-loaded
 service. IPC uses Omarchy's `ShellIpc` fast path; the shell must provide it.
 
+## Bounded input and resource use
+
+- Search accepts at most 256 characters. Ctrl+V, Shift+Insert, the Paste key,
+  the custom context menu, and middle-button primary paste use an asynchronous
+  helper, never Qt's native clipboard read. Clipboard reads have a 4096-byte
+  producer cap and a 1-second absolute deadline. Failure is shown in the search
+  header; retry is supported. Edits, caret/selection/preedit/focus changes and
+  close/reopen invalidate pending completion. Clipboard data is not cached.
+- Window replies have a 1 MiB producer cap and 1.5-second absolute deadline;
+  only normalized metadata for the 128 most-recent windows reaches the GUI
+  (under 2 MiB even with worst-case JSON escapes).
+  Oversized/invalid/failed queries preserve the last usable cache; reopen retries.
+  Titles/classes/workspace labels are length-bounded, control-character sanitized
+  and displayed as plain text, including unavailable-preview captions.
+- At most 12 captures start concurrently, further limited by estimated source
+  pixel budgets (16 MiPixels per window, 48 MiPixels combined, monitor-scaled).
+  Other windows remain selectable with cached images or plain captions. These
+  are metadata-based admission limits, not a guaranteed GPU-memory ceiling.
+- Rounding and layer-rule reads share the finite helper deadlines and bounded
+  output; a 3-second QML watchdog also covers helper failed-start, with termination,
+  kill fallback and reset. Producers are killed/reaped on error/cancel; Linux
+  parent-death signaling covers a forcibly terminated helper. Layer-rule ownership
+  checks remain in place during unload/reload cleanup.
+
 ## Validation
 
 ```sh
 omarchy plugin validate .
 /usr/lib/qt6/bin/qmllint -I /usr/share/omarchy/shell ./*.qml
+python3 -B -m unittest discover -s tests -p 'test_*.py' -v
+QT_QPA_PLATFORM=offscreen /usr/lib/qt6/bin/qmltestrunner -input tests/tst_safesearch.qml
+node tests/gesture.cjs
+node tests/populate.cjs
+node tests/layout.cjs
+node tests/budgets.cjs
 ```
 
 Use Qt 6's qmllint (the default executable may be Qt 5). MIT licensed; see LICENSE.

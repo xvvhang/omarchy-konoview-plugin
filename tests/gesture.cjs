@@ -9,7 +9,7 @@ assert.ok(start >= 0 && end > start)
 let now = 1000, toggles = 0
 const context = vm.createContext({
   Date: { now: () => now }, lastTap: 0, tapCount: 0, pressCount: 0, lastTapInterval: 0,
-  suppressNextTap: false, listing: { running: false }, toggle: () => toggles++,
+  suppressNextTap: false, listing: { start() {} }, toggle: () => toggles++,
 })
 vm.runInContext(source.slice(start, end), context)
 context.press()
